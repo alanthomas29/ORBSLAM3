@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
 
     if (argc < 3 || argc > 4) {
         cerr << endl
-             << "Usage: ./stereo_inertial_realsense_D435i path_to_vocabulary path_to_settings (trajectory_file_name)"
+             << "Usage: ./mono_inertial_realsense_D435i path_to_vocabulary path_to_settings (trajectory_file_name)"
              << endl;
         return 1;
     }
@@ -160,7 +160,6 @@ int main(int argc, char **argv) {
     // Create a configuration for configuring the pipeline with a non default profile
     rs2::config cfg;
     cfg.enable_stream(RS2_STREAM_INFRARED, 1, 640, 480, RS2_FORMAT_Y8, 30);
-    cfg.enable_stream(RS2_STREAM_INFRARED, 2, 640, 480, RS2_FORMAT_Y8, 30);
     cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F);
     cfg.enable_stream(RS2_STREAM_GYRO, RS2_FORMAT_MOTION_XYZ32F);
 
@@ -180,7 +179,7 @@ int main(int argc, char **argv) {
     vector<double> v_accel_timestamp_sync;
     vector<rs2_vector> v_accel_data_sync;
 
-    cv::Mat imCV, imRightCV;
+    cv::Mat imCV;
     int width_img, height_img;
     double timestamp_image = -1.0;
     bool image_ready = false;
@@ -201,11 +200,8 @@ int main(int argc, char **argv) {
                 return;
             }
 
-            rs2::video_frame ir_frameL = fs.get_infrared_frame(1);
-            rs2::video_frame ir_frameR = fs.get_infrared_frame(2);
-
-            imCV = cv::Mat(cv::Size(width_img, height_img), CV_8U, (void*)(ir_frameL.get_data()), cv::Mat::AUTO_STEP);
-            imRightCV = cv::Mat(cv::Size(width_img, height_img), CV_8U, (void*)(ir_frameR.get_data()), cv::Mat::AUTO_STEP);
+            rs2::video_frame color_frame = fs.get_infrared_frame();
+            imCV = cv::Mat(cv::Size(width_img, height_img), CV_8U, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
 
             timestamp_image = fs.get_timestamp()*1e-3;
             image_ready = true;
@@ -262,66 +258,40 @@ int main(int argc, char **argv) {
     rs2::pipeline_profile pipe_profile = pipe.start(cfg, imu_callback);
 
     vector<ORB_SLAM3::IMU::Point> vImuMeas;
-    rs2::stream_profile cam_left = pipe_profile.get_stream(RS2_STREAM_INFRARED, 1);
-    rs2::stream_profile cam_right = pipe_profile.get_stream(RS2_STREAM_INFRARED, 2);
+    rs2::stream_profile cam_stream = pipe_profile.get_stream(RS2_STREAM_INFRARED, 1);
 
 
     rs2::stream_profile imu_stream = pipe_profile.get_stream(RS2_STREAM_GYRO);
-    float* Rbc = cam_left.get_extrinsics_to(imu_stream).rotation;
-    float* tbc = cam_left.get_extrinsics_to(imu_stream).translation;
-    std::cout << "Tbc (left) = " << std::endl;
+    float* Rbc = cam_stream.get_extrinsics_to(imu_stream).rotation;
+    float* tbc = cam_stream.get_extrinsics_to(imu_stream).translation;
+    std::cout << "Tbc = " << std::endl;
     for(int i = 0; i<3; i++){
         for(int j = 0; j<3; j++)
             std::cout << Rbc[i*3 + j] << ", ";
         std::cout << tbc[i] << "\n";
     }
 
-    float* Rlr = cam_right.get_extrinsics_to(cam_left).rotation;
-    float* tlr = cam_right.get_extrinsics_to(cam_left).translation;
-    std::cout << "Tlr  = " << std::endl;
-    for(int i = 0; i<3; i++){
-        for(int j = 0; j<3; j++)
-            std::cout << Rlr[i*3 + j] << ", ";
-        std::cout << tlr[i] << "\n";
-    }
 
-
-
-    rs2_intrinsics intrinsics_left = cam_left.as<rs2::video_stream_profile>().get_intrinsics();
-    width_img = intrinsics_left.width;
-    height_img = intrinsics_left.height;
-    cout << "Left camera: \n";
-    std::cout << " fx = " << intrinsics_left.fx << std::endl;
-    std::cout << " fy = " << intrinsics_left.fy << std::endl;
-    std::cout << " cx = " << intrinsics_left.ppx << std::endl;
-    std::cout << " cy = " << intrinsics_left.ppy << std::endl;
-    std::cout << " height = " << intrinsics_left.height << std::endl;
-    std::cout << " width = " << intrinsics_left.width << std::endl;
-    std::cout << " Coeff = " << intrinsics_left.coeffs[0] << ", " << intrinsics_left.coeffs[1] << ", " <<
-        intrinsics_left.coeffs[2] << ", " << intrinsics_left.coeffs[3] << ", " << intrinsics_left.coeffs[4] << ", " << std::endl;
-    std::cout << " Model = " << intrinsics_left.model << std::endl;
-
-    rs2_intrinsics intrinsics_right = cam_right.as<rs2::video_stream_profile>().get_intrinsics();
-    width_img = intrinsics_right.width;
-    height_img = intrinsics_right.height;
-    cout << "Right camera: \n";
-    std::cout << " fx = " << intrinsics_right.fx << std::endl;
-    std::cout << " fy = " << intrinsics_right.fy << std::endl;
-    std::cout << " cx = " << intrinsics_right.ppx << std::endl;
-    std::cout << " cy = " << intrinsics_right.ppy << std::endl;
-    std::cout << " height = " << intrinsics_right.height << std::endl;
-    std::cout << " width = " << intrinsics_right.width << std::endl;
-    std::cout << " Coeff = " << intrinsics_right.coeffs[0] << ", " << intrinsics_right.coeffs[1] << ", " <<
-        intrinsics_right.coeffs[2] << ", " << intrinsics_right.coeffs[3] << ", " << intrinsics_right.coeffs[4] << ", " << std::endl;
-    std::cout << " Model = " << intrinsics_right.model << std::endl;
+    rs2_intrinsics intrinsics_cam = cam_stream.as<rs2::video_stream_profile>().get_intrinsics();
+    width_img = intrinsics_cam.width;
+    height_img = intrinsics_cam.height;
+    std::cout << " fx = " << intrinsics_cam.fx << std::endl;
+    std::cout << " fy = " << intrinsics_cam.fy << std::endl;
+    std::cout << " cx = " << intrinsics_cam.ppx << std::endl;
+    std::cout << " cy = " << intrinsics_cam.ppy << std::endl;
+    std::cout << " height = " << intrinsics_cam.height << std::endl;
+    std::cout << " width = " << intrinsics_cam.width << std::endl;
+    std::cout << " Coeff = " << intrinsics_cam.coeffs[0] << ", " << intrinsics_cam.coeffs[1] << ", " <<
+    intrinsics_cam.coeffs[2] << ", " << intrinsics_cam.coeffs[3] << ", " << intrinsics_cam.coeffs[4] << ", " << std::endl;
+    std::cout << " Model = " << intrinsics_cam.model << std::endl;
 
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM3::System SLAM(argv[1],argv[2],ORB_SLAM3::System::IMU_STEREO, true, 0, file_name);
+    ORB_SLAM3::System SLAM(argv[1],argv[2],ORB_SLAM3::System::IMU_MONOCULAR, true, 0, file_name);
     float imageScale = SLAM.GetImageScale();
 
     double timestamp;
-    cv::Mat im, imRight;
+    cv::Mat im;
 
     // Clear IMU vectors
     v_gyro_data.clear();
@@ -369,7 +339,6 @@ int main(int argc, char **argv) {
             vAccel_times = v_accel_timestamp_sync;
             timestamp = timestamp_image;
             im = imCV.clone();
-            imRight = imRightCV.clone();
 
             // Clear IMU vectors
             v_gyro_data.clear();
@@ -397,8 +366,6 @@ int main(int argc, char **argv) {
             int width = im.cols * imageScale;
             int height = im.rows * imageScale;
             cv::resize(im, im, cv::Size(width, height));
-            cv::resize(imRight, imRight, cv::Size(width, height));
-
 #ifdef REGISTER_TIMES
             std::chrono::steady_clock::time_point t_End_Resize = std::chrono::steady_clock::now();
 
@@ -410,8 +377,8 @@ int main(int argc, char **argv) {
 #ifdef REGISTER_TIMES
         std::chrono::steady_clock::time_point t_Start_Track = std::chrono::steady_clock::now();
 #endif
-        // Stereo images are already rectified.
-        SLAM.TrackStereo(im, imRight, timestamp, vImuMeas);
+        // Pass the image to the SLAM system
+        SLAM.TrackMonocular(im, timestamp, vImuMeas);
 #ifdef REGISTER_TIMES
         std::chrono::steady_clock::time_point t_End_Track = std::chrono::steady_clock::now();
 

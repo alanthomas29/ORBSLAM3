@@ -401,7 +401,7 @@ int main(int argc, char **argv) {
 
 #ifdef REGISTER_TIMES
             std::chrono::steady_clock::time_point t_End_Resize = std::chrono::steady_clock::now();
-
+            
             t_resize = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t_End_Resize - t_Start_Resize).count();
             SLAM.InsertResizeTime(t_resize);
 #endif
